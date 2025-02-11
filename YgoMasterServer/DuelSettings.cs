@@ -197,6 +197,27 @@ namespace YgoMaster
             }
         }
 
+        // EDITED
+        public void SetP2ItemValue(ItemID.Category itemCategory, int value)
+        {
+            switch (itemCategory)
+            {
+                case ItemID.Category.AVATAR: avatar[CpuIndex] = value; break;
+                case ItemID.Category.ICON: icon[CpuIndex] = value; break;
+                case ItemID.Category.ICON_FRAME: icon_frame[CpuIndex] = value; break;
+                case ItemID.Category.PROTECTOR: sleeve[CpuIndex] = value; break;
+                case ItemID.Category.FIELD: mat[CpuIndex] = value; break;
+                case ItemID.Category.FIELD_OBJ: duel_object[CpuIndex] = value; break;
+                case ItemID.Category.AVATAR_HOME: avatar_home[CpuIndex] = value; break;
+                case ItemID.Category.WALLPAPER: wallpaper[CpuIndex] = value; break;
+            }
+        }
+
+        public void SetDeck(DeckInfo[] deckInfo)
+        {
+            Deck = deckInfo;
+        }
+        // END EDITED
         public int GetBgmValue()
         {
             if (bgms != null && bgms.Count > 0)
