@@ -8,6 +8,22 @@ namespace YgoMaster
     partial class GameServer
     {
         const int shopExtraGuaranteePackCount = 10;
+        // EDITED
+        const int masterPackId = 2;
+        const int premiumPackId = 3;
+
+        bool IsMasterPackUnlocked(PlayerShopState shopState)
+        {
+            ShopItemInfo masterPack;
+            Shop.PacksByPackId.TryGetValue(masterPackId, out masterPack);
+            return shopState.GetAvailability(Shop, masterPack) != PlayerShopItemAvailability.Hidden;
+        }
+
+        bool IsPremiumPack(int packId)
+        {
+            return packId == premiumPackId;
+        }
+        // END EDITED
 
         // TODO: Put this somewhere else (called by Act_ShopPurchase / SoloUpdateChapterStatus / GiveDuelReward)
         bool GiveStructureDeck(GameServerWebRequest request, int structureDeckId)
@@ -100,6 +116,10 @@ namespace YgoMaster
                                 }
                             }
 
+                            // EDITED
+                            int numCopiesObtained;
+                            double percentPlaysetComplete = shopItem.GetPercentPlaysetComplete(request.Player, out numCopiesObtained);
+                            // END EDITED
                             int numCardsObtained;
                             double percentComplete = shopItem.GetPercentComplete(request.Player, out numCardsObtained);
                             double percentToNextPack = shopItem.UnlockSecretsAtPercent - percentComplete;
@@ -130,18 +150,28 @@ namespace YgoMaster
                                 List<string> desc = new List<string>();
                                 if (shopItem.ReleaseDate != default(DateTime))
                                 {
-                                    desc.Add(shopItem.ReleaseDate.ToString("MMMM dd yyyy"));
+                                    // EDITED
+                                    // desc.Add(shopItem.ReleaseDate.ToString("MMMM dd yyyy"));
+                                    // END EDITED
                                 }
                                 //desc.Add(shopItem.Cards.Count + " cards");
                                 //desc.Add(numCardsObtained + " owned");
-                                desc.Add(numCardsObtained + " / " + shopItem.Cards.Count + " owned");
+                                // EDITED
+                                // desc.Add(numCardsObtained + " / " + shopItem.Cards.Count + " owned");
+                                desc.Add(numCardsObtained + " / " + shopItem.Cards.Count + " owned (" + percentComplete.ToString("N1") + "%)");
+                                desc.Add(numCopiesObtained + " / " + shopItem.Cards.Count * 3.0 + " copies (" + percentPlaysetComplete.ToString("N1") + "%)");
+                                desc.Add(shopItem.CardNum + " card" + (shopItem.CardNum == 1 ? "" : "s") + " per pack.");
+                                // END EDITED
                                 if (shopItem.UnlockSecrets.Count > 0)
                                 {
                                     if (shopItem.UnlockSecretsAtPercent > 0)
                                     {
                                         if (percentComplete < shopItem.UnlockSecretsAtPercent && !shopItem.HasUnlockedAllSecrets(request.Player, Shop))
                                         {
-                                            desc.Add((shopItem.UnlockSecretsAtPercent - percentComplete).ToString("N1") + "% left until the next pack");
+                                            // EDITED
+                                            // desc.Add((shopItem.UnlockSecretsAtPercent - percentComplete).ToString("N1") + "% left until the next pack");
+                                            desc.Add((shopItem.UnlockSecretsAtPercent - percentComplete).ToString("N1") + "% left until the next pack.");
+                                            // END EDITED
                                         }
                                     }
                                     else if (shopItem.UnlockSecretsAtNumDuels > 0)
@@ -154,7 +184,10 @@ namespace YgoMaster
                                 }
                                 string descStr = Utils.FixIdString(string.Join("\n", desc));
                                 data["descShortTextId"] = descStr;
-                                data["descFullTextId"] = descStr;
+                                // EDITED
+                                // data["descFullTextId"] = descStr;
+                                data["descFullTextId"] = updateShopText(shopItem.DescFullText);
+                                // END EDITED
                             }
                             else
                             {
@@ -688,6 +721,97 @@ namespace YgoMaster
             Dictionary<CardRarity, int> numCardsByRarity = targetShopItem.GetNumCardsByRarity(packCardRare);
             for (int packIndex = 0; packIndex < packCount; packIndex++)
             {
+                // EDITED
+                List<ShopOddsStyleRarity> cardStyleRarityRateList = odds.CardStyleRarityRateList;
+                CardRarity minRarity = CardRarity.Normal;
+                CardStyleRarity minStyle = CardStyleRarity.Normal;
+                double minPackUltraRareRate = 0;
+                double minPackSuperRareRate = 0;
+                double minPackRareRate = 0;
+                double minPackRoyalRate = 0;
+                double minPackShineRate = 0;
+                if (odds.MinPackRarityRates != null)
+                {
+                    odds.MinPackRarityRates.TryGetValue(CardRarity.UltraRare, out minPackUltraRareRate);
+                    odds.MinPackRarityRates.TryGetValue(CardRarity.SuperRare, out minPackSuperRareRate);
+                    odds.MinPackRarityRates.TryGetValue(CardRarity.Rare, out minPackRareRate);
+                    double rng = rand.NextDouble() * 100.0;
+                    if (rng < minPackUltraRareRate)
+                    {
+                        minRarity = CardRarity.UltraRare;
+                    }
+                    else if (rng < minPackUltraRareRate + minPackSuperRareRate)
+                    {
+                        minRarity = CardRarity.SuperRare;
+                    }
+                    else if (rng < minPackUltraRareRate + minPackSuperRareRate + minPackRareRate)
+                    {
+                        minRarity = CardRarity.Rare;
+                    }
+                }
+                if (odds.MinPackStyleRates != null)
+                {
+                    odds.MinPackStyleRates.TryGetValue(CardStyleRarity.Royal, out minPackRoyalRate);
+                    odds.MinPackStyleRates.TryGetValue(CardStyleRarity.Shine, out minPackShineRate);
+                    double rng = rand.NextDouble() * 100.0;
+                    if (rng < minPackRoyalRate)
+                    {
+                        minStyle = CardStyleRarity.Royal;
+                    }
+                    else if (rng < minPackRoyalRate + minPackShineRate)
+                    {
+                        minStyle = CardStyleRarity.Shine;
+                    }
+                }
+                if (minRarity > CardRarity.Normal || minStyle > CardStyleRarity.Normal)
+                {
+                    if (rand.NextDouble() * 100.0 < odds.MinPackUpgradeOtherTypeRate)
+                    {
+                        if (minRarity == CardRarity.Normal)
+                        {
+                            double rng = rand.NextDouble() * (minPackUltraRareRate + minPackSuperRareRate + minPackRareRate);
+                            if (rng < minPackUltraRareRate)
+                            {
+                                minRarity = CardRarity.UltraRare;
+                            }
+                            else if (rng < minPackUltraRareRate + minPackSuperRareRate)
+                            {
+                                minRarity = CardRarity.SuperRare;
+                            }
+                            else if (rng < minPackUltraRareRate + minPackSuperRareRate + minPackRareRate)
+                            {
+                                minRarity = CardRarity.Rare;
+                            }
+                        }
+                        if (minStyle == CardStyleRarity.Normal)
+                        {
+                            double rng = rand.NextDouble() * (minPackRoyalRate + minPackShineRate);
+                            if (rng < minPackRoyalRate)
+                            {
+                                minStyle = CardStyleRarity.Royal;
+                            }
+                            else if (rng < minPackRoyalRate + minPackShineRate)
+                            {
+                                minStyle = CardStyleRarity.Shine;
+                            }
+                        }
+                    }
+                }
+                bool disableBacksideRarityJebaitBelowMin = rand.NextDouble() < 0.5;
+                int shineCount = 0;
+                int royalCount = 0;
+                int rareCount = 0;
+                int superRareCount = 0;
+                int ultraRareCount = 0;
+                // Extra cards are later forced to be alternate art cards.
+                int extraCards = 0;
+                if (IsPremiumPack(shopItem.Id))
+                {
+                    if (shopItem.CardNum < 8 && rand.NextDouble() < 0.0194) { extraCards++; }
+                    if (extraCards == 1 && shopItem.CardNum < 7 && rand.NextDouble() < 0.2) { extraCards++; }
+                    if (extraCards == 2 && shopItem.CardNum < 6 && rand.NextDouble() < 0.2) { extraCards++; }
+                }
+                // END EDITED
                 HashSet<int> seenCardIdsThisPack = new HashSet<int>();
                 CardRarity highestCardBackRarity = CardRarity.Normal;
                 CardRarity highestCardRarity = CardRarity.Normal;
@@ -710,7 +834,10 @@ namespace YgoMaster
                         }
                     }
                 }
-                for (int cardIndex = 0; cardIndex < targetShopItem.CardNum; cardIndex++)
+                // EDITED
+                // for (int cardIndex = 0; cardIndex < targetShopItem.CardNum; cardIndex++)
+                for (int cardIndex = 0; cardIndex < targetShopItem.CardNum + extraCards ; cardIndex++)
+                // END EDITED
                 {
                     // TODO: Improve the code which determines which odds to use as it currently isn't super flexible
                     if (cardIndex == targetShopItem.CardNum - 1)
@@ -764,7 +891,13 @@ namespace YgoMaster
                     }
                     if (match == null)
                     {
-                        Utils.LogWarning("Failed to determine odds for card index " + cardIndex + " on pack id " + targetShopItem.Id);
+                        // EDITED
+                        // Utils.LogWarning("Failed to determine odds for card index " + cardIndex + " on pack id " + targetShopItem.Id);
+                        if (cardIndex < shopItem.CardNum || cardIndex >= shopItem.CardNum + extraCards)
+                        {
+                            Utils.LogWarning("Failed to determine odds for card index " + cardIndex + " on pack id " + targetShopItem.Id);
+                        }
+                        // END EDITED
                         //continue;
                         match = odds.CardRateList[0];
                     }
@@ -788,11 +921,20 @@ namespace YgoMaster
                     }
                     double rarityPercent = rand.NextDouble() * (100 - subtractPercent);
                     CardRarity rarity = CardRarity.None;
+                    // EDITED
+                    // This keeps track of the original rarities in the event they are upgraded to a higher minimum for a godpack.
+                    // It is used to produce a more convincing jebait that looks like a normal pack.
+                    CardRarity initialBacksideRarity = rarity;
+                    // END EDITED
                     foreach (KeyValuePair<CardRarity, double> rate in rarityAccumaltiveRate.OrderBy(x => x.Key))
                     {
                         if (rarityPercent < rate.Value)
                         {
                             rarity = rate.Key;
+                            // EDITED
+                            initialBacksideRarity = rarity;
+                            rarity = rarity < minRarity ? minRarity : rarity;
+                            // END EDITED
                             break;
                         }
                     }
@@ -845,6 +987,39 @@ namespace YgoMaster
                                 }
                                 seenCardIdsThisPack.Add(cardId);
                                 foundCardId = cardId;
+                                // EDITED
+                                // seenCardIdsThisPack.Add(cardId);
+                                // foundCardId = cardId;
+                                if (cardIndex < shopItem.CardNum)
+                                {
+                                    seenCardIdsThisPack.Add(cardId);
+                                    foundCardId = cardId;
+                                } else {
+                                    List<int> unownedRoyalAltArtIds = new List<int>();
+                                    foreach (KeyValuePair<int, int> kvp in altArtIdByCardId)
+                                    {
+                                        if (request.Player.Cards.GetCount(kvp.Value, PlayerCardKind.All, CardStyleRarity.Royal) < 3)
+                                        {
+                                            unownedRoyalAltArtIds.Add(kvp.Value);
+                                        }
+                                    }
+                                    List<int> eligibleAltArtIds = unownedRoyalAltArtIds.Count > 0 ? unownedRoyalAltArtIds : new List<int>(altArtIdByCardId.Values);
+                                    foundCardId = eligibleAltArtIds.ElementAt(rand.Next(eligibleAltArtIds.Count()));
+                                    rarity = (CardRarity)CardRare[foundCardId];
+                                    originalRarity = rarity;
+                                    initialBacksideRarity = rarity;
+                                }
+                                if (altArtIdByCardId.ContainsKey(foundCardId) && rand.NextDouble() * 100.0 < odds.AltArtRate)
+                                {
+                                    foundCardId = altArtIdByCardId[foundCardId];
+                                    rarity = (CardRarity)CardRare[foundCardId];
+                                    originalRarity = rarity;
+                                    initialBacksideRarity = rarity;
+                                }
+                                if (rarity == CardRarity.Rare) { rareCount++; }
+                                if (rarity == CardRarity.SuperRare) { superRareCount++; }
+                                if (rarity == CardRarity.UltraRare) { ultraRareCount++; }
+                                // END EDITED
                                 break;
                             }
                         }
@@ -870,7 +1045,10 @@ namespace YgoMaster
                     CardStyleRarity styleRarity = CardStyleRarity.Normal;
                     if (!Shop.DisableCardStyleRarity)
                     {
-                        foreach (ShopOddsStyleRarity item in odds.CardStyleRarityRateList)
+                        // EDITED
+                        // foreach (ShopOddsStyleRarity item in odds.CardStyleRarityRateList)
+                        foreach (ShopOddsStyleRarity item in cardStyleRarityRateList)
+                        // END EDITED
                         {
                             if (item.Rarities.Contains(rarity))
                             {
@@ -897,6 +1075,12 @@ namespace YgoMaster
                                         if (styleRarityPercent < rate.Value)
                                         {
                                             styleRarity = rate.Key;
+                                            // EDITED
+                                            styleRarity = cardIndex >= shopItem.CardNum ? CardStyleRarity.Royal : styleRarity;
+                                            styleRarity = styleRarity < minStyle ? minStyle : styleRarity;
+                                            if (styleRarity == CardStyleRarity.Shine) { shineCount++; }
+                                            if (styleRarity == CardStyleRarity.Royal) { royalCount++; }
+                                            // END EDITED
                                             break;
                                         }
                                     }
@@ -925,6 +1109,12 @@ namespace YgoMaster
                             {
                                 case ShopItemSecretType.FindOrCraft:
                                 case ShopItemSecretType.Find:
+                                    // EDITED
+                                    if (!IsMasterPackUnlocked(request.Player.ShopState))
+                                    {
+                                        continue;
+                                    }
+                                    // END EDITED
                                     if (request.Player.ShopState.GetAvailability(Shop, secretPack) == PlayerShopItemAvailability.Available)
                                     {
                                         thisCardFoundSecretsExtend.Add(secretPack.ShopId);
@@ -951,12 +1141,25 @@ namespace YgoMaster
                             showSecretFoundResult = true;
                         }
                     }
-                    CardRarity backSideRarity = rarity;
+                    // EDITED
+                    // CardRarity backSideRarity = rarity;
+                    CardRarity backSideRarity = initialBacksideRarity;
+                    // END EDITED
                     if (Shop.PackOddsVisuals.RarityJebait && Shop.PackOddsVisuals.RarityOnCardBack &&
                         rarity > CardRarity.Rare && rand.Next(100) < 20)
                     {
                         backSideRarity--;
+                        // EDITED
+                        if (backSideRarity > CardRarity.Rare && rand.Next(100) < 50)
+                        {
+                            backSideRarity--;
+                        }
+                        // END EDITED
                     }
+                    // EDITED
+                    backSideRarity = backSideRarity < rarityGuarantee ? rarityGuarantee : backSideRarity;
+                    backSideRarity = disableBacksideRarityJebaitBelowMin && backSideRarity < minRarity ? minRarity : backSideRarity;
+                    // END EDITED
                     if (rarity > highestCardRarity)
                     {
                         highestCardRarity = rarity;
@@ -979,22 +1182,35 @@ namespace YgoMaster
                 if (cardInfos.Count > 0)
                 {
                     bool showRarityOnPack = Shop.PackOddsVisuals.RarityOnPack;
-                    bool doCutin = highestCardBackRarity >= CardRarity.SuperRare && rand.Next(100) < 5;
-                    bool jebaitRarity = Shop.PackOddsVisuals.RarityJebait && (packCount == 1 || packIndex < packCount - 1) &&
-                        highestCardBackRarity >= CardRarity.SuperRare && rand.Next(100) < 20;
-                    bool jebaitRarityBg = jebaitRarity && rand.Next(2) == 0;
+                    // EDITED
+                    // bool doCutin = highestCardBackRarity >= CardRarity.SuperRare && rand.Next(100) < 5;
+                    bool doCutin = IsPremiumPack(shopItem.Id) ? rand.NextDouble() < Math.Min(0.1 + royalCount*0.2, 0.8) : rand.NextDouble() < Math.Min(0.1 + shineCount*0.1 + royalCount*0.3, 0.8);
+                    // bool jebaitRarity = Shop.PackOddsVisuals.RarityJebait && (packCount == 1 || packIndex < packCount - 1) &&
+                    //     highestCardBackRarity >= CardRarity.SuperRare && rand.Next(100) < 20;
+                    bool jebaitRarity = Shop.PackOddsVisuals.RarityJebait &&
+                        highestCardBackRarity >= CardRarity.SuperRare && rand.NextDouble() < 0.2;
+                    // bool jebaitRarityBg = jebaitRarity && rand.Next(2) == 0;
+                    // END EDITED
 
                     // 1 = Blue lighting bolt to the left
                     // 2 = Blue lighting bolt to left / right
                     // 3 = Blue lighting bolt to left / right and purple middle left
                     int thunderType = 1;
-                    if (highestCardBackRarity >= CardRarity.SuperRare)
+                    // EDITED
+                    // if (highestCardBackRarity >= CardRarity.SuperRare)
+                    // {
+                    //     thunderType = rand.Next(2, 4);
+                    // }
+                    // else
+                    // {
+                    //     thunderType = rand.Next(1, 3);
+                    // }
+                    double doubleThunderChance = Math.Min(0.1 + rareCount*0.1 + superRareCount*0.3 + ultraRareCount*0.3, 0.8);
+                    double tripleThunderChance = Math.Min(0.05 + rareCount*0.05 + superRareCount*0.1 + ultraRareCount*0.2, 0.8);
+                    double rng = rand.NextDouble();
+                    if (rng < (doubleThunderChance + tripleThunderChance))
                     {
-                        thunderType = rand.Next(2, 4);
-                    }
-                    else
-                    {
-                        thunderType = rand.Next(1, 3);
+                        thunderType = rng < tripleThunderChance ? 3 : 2;
                     }
                     // 1 = Normal
                     // 2 = Monster cutting animation
@@ -1003,19 +1219,46 @@ namespace YgoMaster
                     // 2 = White flash
                     // 3 = White flash followed by yellow background
                     // 4 = White flash followed by rainbow background
-                    int rarityUpBgType = jebaitRarity && jebaitRarityBg ? (int)highestCardBackRarity : 1;
+                    // int rarityUpBgType = jebaitRarity && jebaitRarityBg ? (int)highestCardBackRarity : 1;
+                    int rarityUpBgType = 1;
                     // 1 = Normal
                     // 2 = White flash over the card pack
                     // 3 = White flash over the card pack (x2), gets big and emits a yellow effect
                     // 4 = White flash over the card pack (x2), gets big and emits a rainbow effect
-                    int rarityUpType = jebaitRarity && !jebaitRarityBg ? (int)highestCardBackRarity : 1;
+                    // int rarityUpType = jebaitRarity && !jebaitRarityBg ? (int)highestCardBackRarity : 1;
+                    int rarityUpType = 1;
+                    CardRarity packRarity = highestCardBackRarity;
+                    if (jebaitRarity && packRarity >= CardRarity.SuperRare)
+                    {
+                        packRarity--;
+                        if (packRarity > CardRarity.Rare && rand.NextDouble() < 0.5) { packRarity--; }
+                    }
+                    packRarity = packRarity < rarityGuarantee ? rarityGuarantee : packRarity;
+                    if (packRarity < highestCardBackRarity)
+                    {
+                        if (rand.NextDouble() < 0.5)
+                        {
+                            rarityUpBgType = (int)highestCardBackRarity;
+                        } else {
+                            rarityUpType = (int)highestCardBackRarity;
+                        }
+                        // Double jebait using both animations.
+                        if (rarityUpBgType == 4 && rarityUpType == 1 && packRarity < CardRarity.SuperRare && rand.NextDouble() < 0.5)
+                        {
+                            rarityUpType = 3;
+                        }
+                    }
+                    // END EDITED
                     Dictionary<string, object> effects = new Dictionary<string, object>()
                     {
                         { "thunder", showRarityOnPack ? thunderType : rand.Next(1, 4) },
                         { "rarityup", showRarityOnPack ? rarityUpType : 1 },
                         { "cut", cutType },
                         { "rarityupBg", showRarityOnPack ? rarityUpBgType : 1 },
-                        { "rarity", (jebaitRarity || !showRarityOnPack ? 1 : (int)highestCardBackRarity) },
+                        // EDITED
+                        // { "rarity", (jebaitRarity || !showRarityOnPack ? 1 : (int)highestCardBackRarity) },
+                        { "rarity", showRarityOnPack ? (int)packRarity : 1 },
+                        // END EDITED
                     };
                     List<Dictionary<string, object>> packList;
                     if (!packInfos.TryGetValue(targetShopItem, out packList))
@@ -1145,6 +1388,18 @@ namespace YgoMaster
             {
                 Act_ShopGetList(request, shopIdToUpdate);
             }
+            // EDITED
+            // Solo secrets may be locked behind pack availability, and new packs may have been unlocked at this point.
+            // This unlocks those secrets immediately instead of waiting for the next LoadPlayer() call.
+            UnlockSecrets(request.Player);
+            // Reload shop to get any new items that may have been unlocked above.
+            Act_ShopGetList(request);
+            // Update card pool to ensure newly unlocked packs can display the correct rarities when progressive card list is used.
+            request.Response["Master"] = new Dictionary<string, object>()
+            {
+                { "CardRare", GetCardRarities(request.Player) }
+            };
+            // END EDITED
             return true;
         }
 

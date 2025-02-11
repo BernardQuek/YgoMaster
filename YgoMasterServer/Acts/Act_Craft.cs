@@ -134,6 +134,12 @@ namespace YgoMaster
                                             {
                                                 case ShopItemSecretType.FindOrCraft:
                                                 case ShopItemSecretType.Craft:
+                                                    // EDITED
+                                                    if (!IsMasterPackUnlocked(request.Player.ShopState))
+                                                    {
+                                                        continue;
+                                                    }
+                                                    // END EDITED
                                                     if (request.Player.ShopState.GetAvailability(Shop, secretPack) == PlayerShopItemAvailability.Available)
                                                     {
                                                         foundSecretsExtend.Add(secretPack.ShopId);
