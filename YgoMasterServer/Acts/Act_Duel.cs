@@ -10,6 +10,175 @@ namespace YgoMaster
 {
     partial class GameServer
     {
+        // EDITED
+        void UpgradeLoanerDeckFinish(DuelSettings duelSettings, PlayerCards playerCards)
+        {
+            PlayerCards playerCardsCopy = new PlayerCards();
+            playerCardsCopy.FromDictionary(playerCards.ToDictionary());
+            DeckInfo loanerDeck = duelSettings.Deck[DuelSettings.PlayerIndex];
+            UpgradeDeckFinishImpl(loanerDeck.MainDeckCards, playerCardsCopy);
+            UpgradeDeckFinishImpl(loanerDeck.ExtraDeckCards, playerCardsCopy);
+            UpgradeDeckFinishImpl(loanerDeck.SideDeckCards, playerCardsCopy);
+        }
+
+        void UpgradeDeckFinishImpl(CardCollection deck, PlayerCards playerCards)
+        {
+            List<KeyValuePair<int, CardStyleRarity>> cards = new List<KeyValuePair<int, CardStyleRarity>>(deck.GetCollection());
+            deck.Clear();
+            foreach (KeyValuePair<int, CardStyleRarity> card in cards)
+            {
+                int cardId = card.Key;
+                if (altArtIdByCardId.ContainsKey(cardId))
+                {
+                    int altArtCardId = altArtIdByCardId[cardId];
+                    cardId = playerCards.Contains(altArtCardId) && UpgradeLoanerDeckToOwnedAltArts ? altArtCardId : cardId;
+                }
+                CardStyleRarity style = card.Value;
+                if (playerCards.GetCount(cardId, PlayerCardKind.All, CardStyleRarity.Royal) > 0)
+                {
+                    if (style < CardStyleRarity.Royal)
+                    {
+                        style = CardStyleRarity.Royal;
+                        PlayerCardKind kind = playerCards.GetCount(cardId, PlayerCardKind.Dismantle, CardStyleRarity.Royal) > 0 ? PlayerCardKind.Dismantle : PlayerCardKind.NoDismantle;
+                        playerCards.Subtract(cardId, 1, kind, CardStyleRarity.Royal);
+                    }
+                }
+                else if (playerCards.GetCount(cardId, PlayerCardKind.All, CardStyleRarity.Shine) > 0)
+                {
+                    if (style < CardStyleRarity.Shine)
+                    {
+                        style = CardStyleRarity.Shine;
+                        PlayerCardKind kind = playerCards.GetCount(cardId, PlayerCardKind.Dismantle, CardStyleRarity.Shine) > 0 ? PlayerCardKind.Dismantle : PlayerCardKind.NoDismantle;
+                        playerCards.Subtract(cardId, 1, kind, CardStyleRarity.Shine);
+                    }
+                }
+                deck.Add(cardId, style);
+            }
+        }
+
+        void UpgradeCpuDeckFinish(DuelSettings duelSettings, PlayerCards playerCards, int chapterId)
+        {
+            PlayerCards playerCardsCopy = new PlayerCards();
+            playerCardsCopy.FromDictionary(playerCards.ToDictionary());
+            CardStyleRarity minStyle = CardStyleRarity.Normal;
+            double minStyleRoyalRate = GetUpgradeCpuDeckMinStyleRoyalRate(chapterId);
+            double minStyleShineRate = GetUpgradeCpuDeckMinStyleShineRate(chapterId);
+            double rng = rand.NextDouble();
+            if (rng < minStyleRoyalRate + minStyleShineRate)
+            {
+                minStyle = rng < minStyleRoyalRate ? CardStyleRarity.Royal : CardStyleRarity.Shine;
+            }
+            DeckInfo cpuDeck = duelSettings.Deck[DuelSettings.CpuIndex];
+            UpgradeCpuDeckFinishImpl(cpuDeck.MainDeckCards, playerCardsCopy, chapterId, minStyle);
+            UpgradeCpuDeckFinishImpl(cpuDeck.ExtraDeckCards, playerCardsCopy, chapterId, minStyle);
+            UpgradeCpuDeckFinishImpl(cpuDeck.SideDeckCards, playerCardsCopy, chapterId, minStyle);
+        }
+
+        void UpgradeCpuDeckFinishImpl(CardCollection deck, PlayerCards playerCards, int chapterId, CardStyleRarity minStyle)
+        {
+            List<KeyValuePair<int, CardStyleRarity>> cards = new List<KeyValuePair<int, CardStyleRarity>>(deck.GetCollection());
+            deck.Clear();
+            double altArtRate = GetUpgradeCpuDeckAltArtRate(chapterId);
+            foreach (KeyValuePair<int, CardStyleRarity> card in cards)
+            {
+                int cardId = card.Key;
+                if (altArtIdByCardId.ContainsKey(cardId))
+                {
+                    int altArtCardId = altArtIdByCardId[cardId];
+                    altArtRate = playerCards.Contains(altArtCardId) ? Math.Max(0.5, altArtRate) : altArtRate;
+                    cardId = rand.NextDouble() < altArtRate ? altArtCardId : cardId;
+                }
+                CardStyleRarity style = card.Value;
+                style = style < minStyle ? minStyle : style;
+                int royalCount = playerCards.GetCount(cardId, PlayerCardKind.All, CardStyleRarity.Royal);
+                int shineCount = playerCards.GetCount(cardId, PlayerCardKind.All, CardStyleRarity.Shine);
+                double royalRate = GetUpgradeCpuDeckCardRoyalRate(chapterId, cardId);
+                double shineRate = GetUpgradeCpuDeckCardShineRate(chapterId, cardId);
+                double rng = rand.NextDouble();
+                if (rng < royalRate)
+                {
+                    style = CardStyleRarity.Royal;
+                }
+                else if (rng < royalRate + shineRate && style < CardStyleRarity.Shine)
+                {
+                    style = CardStyleRarity.Shine;
+                }
+                if (rand.NextDouble() < 0.8)
+                {
+                    if (royalCount > 0)
+                    {
+                        if (style < CardStyleRarity.Royal)
+                        {
+                            style = CardStyleRarity.Royal;
+                            PlayerCardKind kind = playerCards.GetCount(cardId, PlayerCardKind.Dismantle, CardStyleRarity.Royal) > 0 ? PlayerCardKind.Dismantle : PlayerCardKind.NoDismantle;
+                            playerCards.Subtract(cardId, 1, kind, CardStyleRarity.Royal);
+                        }
+                    }
+                    else if  (shineCount > 0)
+                    {
+                        if (style < CardStyleRarity.Shine)
+                        {
+                            style = CardStyleRarity.Shine;
+                            PlayerCardKind kind = playerCards.GetCount(cardId, PlayerCardKind.Dismantle, CardStyleRarity.Shine) > 0 ? PlayerCardKind.Dismantle : PlayerCardKind.NoDismantle;
+                            playerCards.Subtract(cardId, 1, kind, CardStyleRarity.Shine);
+                        }
+                    }
+                }
+                deck.Add(cardId, style);
+            }
+        }
+
+        double GetUpgradeCpuDeckMinStyleShineRate(int chapterId)
+        {
+            return IsMysteryDuelChapter(chapterId) ? 0.00949 : 0.00297;
+        }
+
+        double GetUpgradeCpuDeckMinStyleRoyalRate(int chapterId)
+        {
+            return IsMysteryDuelChapter(chapterId) ? 0.00316 : 0.00099;
+        }
+
+        double GetUpgradeCpuDeckCardShineRate(int chapterId, int cardId)
+        {
+            bool isMysteryDuel = IsMysteryDuelChapter(chapterId);
+            switch ((CardRarity)CardRare[cardId])
+            {
+                case CardRarity.Normal:
+                    return isMysteryDuel ? 0.092 : 0.072;
+                case CardRarity.Rare:
+                    return isMysteryDuel ? 0.1765 : 0.108;
+                case CardRarity.SuperRare:
+                    return isMysteryDuel ? 0.2838 : 0.144; 
+                case CardRarity.UltraRare:
+                    return isMysteryDuel ? 0.3429 : 0.18;
+                default:
+                    return 0;
+            }
+        }
+
+        double GetUpgradeCpuDeckCardRoyalRate(int chapterId, int cardId)
+        {
+            bool isMysteryDuel = IsMysteryDuelChapter(chapterId);
+            switch ((CardRarity)CardRare[cardId])
+            {
+                case CardRarity.Normal:
+                    return isMysteryDuel ? 0.034 : 0.008;  
+                case CardRarity.Rare:
+                    return isMysteryDuel ? 0.0735 : 0.012;
+                case CardRarity.SuperRare:
+                    return isMysteryDuel ? 0.1486 : 0.016; 
+                case CardRarity.UltraRare:
+                    return isMysteryDuel ? 0.2286 : 0.02;
+                default:
+                    return 0;
+            }
+        }
+
+        double GetUpgradeCpuDeckAltArtRate(int chapterId)
+        {
+            return IsMysteryDuelChapter(chapterId) ? 0.2 : 0.1;
+        }
+        // END EDITED
         DuelSettings GetSoloDuelSettings(Player player, int chapterId)
         {
             DuelSettings duelSettings;
@@ -163,6 +332,74 @@ namespace YgoMaster
                 duelSettings.SetP1ItemValue(duel.IsMyDeck, ItemID.Category.ICON, player.IconId);
                 duelSettings.SetP1ItemValue(duel.IsMyDeck, ItemID.Category.ICON_FRAME, player.IconFrameId);
                 duelSettings.SetP1ItemValue(duel.IsMyDeck, ItemID.Category.WALLPAPER, player.Wallpaper);
+                // EDITED
+                // Randomise decks for mystery chapters.
+                if (IsMysteryDuelChapter(duelSettings.chapter))
+                {
+                    List<KeyValuePair<int, DuelSettings>> leCampaignChapter = SoloDuels.Where(duelSettingsByChapterId => IsLeCampaignChapter(duelSettingsByChapterId.Key)).ToList();
+                    List<KeyValuePair<int, DuelSettings>> leDuelistChallengeChapter = SoloDuels.Where(duelSettingsByChapterId => IsLeDuelistChallengeChapter(duelSettingsByChapterId.Key)).ToList();
+                    DeckInfo playerDeck;
+                    DeckInfo cpuDeck;
+                    if (IsMysteryCampaignChapter(duelSettings.chapter))
+                    {
+                        playerDeck = leCampaignChapter.ElementAt(rand.Next(leCampaignChapter.Count)).Value.Deck[DuelSettings.PlayerIndex];
+                        cpuDeck = leCampaignChapter.ElementAt(rand.Next(leCampaignChapter.Count)).Value.Deck[DuelSettings.CpuIndex];
+                    } else {
+                        playerDeck = leDuelistChallengeChapter.ElementAt(rand.Next(leDuelistChallengeChapter.Count)).Value.Deck[DuelSettings.CpuIndex];
+                        cpuDeck = leDuelistChallengeChapter.ElementAt(rand.Next(leDuelistChallengeChapter.Count)).Value.Deck[DuelSettings.CpuIndex];
+                    }
+                    DeckInfo[] randomDecks = {playerDeck, cpuDeck};
+                    duelSettings.SetDeck(randomDecks);
+                    UpgradeLoanerDeckFinish(duelSettings, player.Cards);
+                }
+                // Randomise battlefield and accessories for LE and mystery chapters.
+                if (IsLeChapter(duelSettings.chapter) || IsMysteryDuelChapter(duelSettings.chapter))
+                {
+                    ItemID.Category[] categories =
+                    {
+                        ItemID.Category.AVATAR,
+                        ItemID.Category.ICON,
+                        ItemID.Category.ICON_FRAME,
+                        ItemID.Category.PROTECTOR,
+                        ItemID.Category.FIELD,
+                        ItemID.Category.FIELD_OBJ,
+                        ItemID.Category.AVATAR_HOME,
+                        ItemID.Category.WALLPAPER,
+                    };
+                    List<ItemID.Category> mirroredCategories = new List<ItemID.Category>
+                    {
+                        ItemID.Category.PROTECTOR,
+                        ItemID.Category.FIELD,
+                        ItemID.Category.FIELD_OBJ,
+                        ItemID.Category.AVATAR_HOME,
+                    };
+                    if (RandomiseLEChapterBattlefield)
+                    {
+                        foreach (ItemID.Category category in categories)
+                        {
+                            int itemId = ItemID.Values[category].ElementAt(rand.Next(ItemID.Values[category].Count()));
+                            if (category == ItemID.Category.AVATAR_HOME && rand.Next(ItemID.Values[category].Count() + 1) == 0)
+                            {
+                                itemId = 0;
+                            }
+                            duelSettings.SetP2ItemValue(category, itemId);
+                            if (!duel.IsMyDeck && mirroredCategories.Contains(category))
+                            {
+                                duelSettings.SetP1ItemValue(false, category, itemId);
+                            }
+                        }
+                    }
+                    if (duel.IsMyDeck && UsePlayerBattlefieldForLEChapter)
+                    {
+                        foreach (ItemID.Category category in categories)
+                        {
+                            duelSettings.SetP2ItemValue(category, duelSettings.GetP1ItemValue(category));
+                        }
+                    }
+                }
+
+                UpgradeCpuDeckFinish(duelSettings, player.Cards, chapterId);
+                // END EDITED
             }
             return duelSettings;
         }
@@ -220,7 +457,15 @@ namespace YgoMaster
                     }
                     if (!duelSettings.IsCustomDuel || string.IsNullOrEmpty(duelSettings.name[DuelSettings.PlayerIndex]))
                     {
-                        duelSettings.SetP1Name(duel.IsMyDeck, request.Player.Name);
+                        // EDITED
+                        if (IsLeChapter(duelSettings.chapter) && !duel.IsMyDeck && !string.IsNullOrEmpty(duelSettings.name[DuelSettings.PlayerIndex]))
+                        {
+                            duelSettings.SetP1Name(duel.IsMyDeck, duelSettings.name[DuelSettings.PlayerIndex]);
+                        } else {
+                            duelSettings.SetP1Name(duel.IsMyDeck, request.Player.Name);
+                        }
+                        // duelSettings.SetP1Name(duel.IsMyDeck, request.Player.Name);
+                        // END EDITED
                     }
                     if (!duelSettings.IsCustomDuel || duelSettings.RandSeed == 0)
                     {
@@ -624,75 +869,113 @@ namespace YgoMaster
                             double randValue = rand.NextDouble() * 100;
                             if (reward.Rate >= randValue)
                             {
-                                HashSet<int> unownedIds = new HashSet<int>();
-                                if (reward.Ids != null && reward.Ids.Count > 0)
+                                // EDITED
+                                int rewardCount = 1;
+                                if (reward.Ids == null)
                                 {
-                                    foreach (int id in reward.Ids)
+                                    double rng = rand.NextDouble();
+                                    if (rng < 0.03)
                                     {
-                                        if (ItemID.GetCategoryFromID(id) == ItemID.Category.CONSUME || !request.Player.Items.Contains(id))
-                                        {
-                                            unownedIds.Add(id);
-                                        }
+                                        while (rand.NextDouble() < 0.9) { rewardCount++; }
+                                    }
+                                    else if (rng < 0.1)
+                                    {
+                                        while (rand.NextDouble() < 0.75) { rewardCount++; }
                                     }
                                 }
-                                else
+                                for (int i = 0; i < rewardCount; i++)
                                 {
-                                    // Also see LoadPlayer which does the same thing (loads all items)
-                                    ItemID.Category[] categories =
+                                // END EDITED
+                                // EDITED (indent)
+                                    HashSet<int> unownedIds = new HashSet<int>();
+                                    if (reward.Ids != null && reward.Ids.Count > 0)
                                     {
-                                        ItemID.Category.AVATAR,
-                                        ItemID.Category.ICON,
-                                        ItemID.Category.ICON_FRAME,
-                                        ItemID.Category.PROTECTOR,
-                                        ItemID.Category.DECK_CASE,
-                                        ItemID.Category.FIELD,
-                                        ItemID.Category.FIELD_OBJ,
-                                        ItemID.Category.AVATAR_HOME,
-                                        ItemID.Category.WALLPAPER,
-                                    };
-                                    foreach (ItemID.Category category in categories)
-                                    {
-                                        foreach (int id in ItemID.Values[category])
+                                        foreach (int id in reward.Ids)
                                         {
-                                            if (!request.Player.Items.Contains(id))
+                                            if (ItemID.GetCategoryFromID(id) == ItemID.Category.CONSUME || !request.Player.Items.Contains(id))
                                             {
                                                 unownedIds.Add(id);
                                             }
                                         }
                                     }
-                                }
-                                if (unownedIds.Count > 0)
-                                {
-                                    int amount = 1;
-                                    int id = unownedIds.ElementAt(rand.Next(unownedIds.Count));
-                                    if (ItemID.GetCategoryFromID(id) == ItemID.Category.STRUCTURE)
-                                    {
-                                        GiveStructureDeck(request, id);
-                                    }
-                                    else if (ItemID.GetCategoryFromID(id) == ItemID.Category.CONSUME)
-                                    {
-                                        amount = rewards.GetAmount(rand, reward, chapterStatusChanged);
-                                        if (amount == 0)
-                                        {
-                                            continue;
-                                        }
-                                        request.Player.AddItem(id, amount);
-                                    }
                                     else
                                     {
-                                        request.Player.Items.Add(id);
-                                        WriteItem(request, id);
+                                        // Also see LoadPlayer which does the same thing (loads all items)
+                                        ItemID.Category[] categories =
+                                        {
+                                            ItemID.Category.AVATAR,
+                                            ItemID.Category.ICON,
+                                            ItemID.Category.ICON_FRAME,
+                                            ItemID.Category.PROTECTOR,
+                                            ItemID.Category.DECK_CASE,
+                                            ItemID.Category.FIELD,
+                                            ItemID.Category.FIELD_OBJ,
+                                            ItemID.Category.AVATAR_HOME,
+                                            ItemID.Category.WALLPAPER,
+                                        };
+                                        foreach (ItemID.Category category in categories)
+                                        {
+                                            foreach (int id in ItemID.Values[category])
+                                            {
+                                                // EDITED
+                                                // if (!request.Player.Items.Contains(id))
+                                                // {
+                                                //     unownedIds.Add(id);
+                                                // }
+                                                if (request.Player.Items.Contains(id))
+                                                {
+                                                    continue;
+                                                }
+                                                // Exclude:
+                                                // 1. Items sold in shop (including the mate's base and field parts given upon purchasing the corresponding fields).
+                                                // 2. Deck cases included with structure decks.
+                                                // 3. Items available as specific chapter rewards.
+                                                List<int> excludedItemIds = new List<int>{1000002,1000003,1000004,1000005,1000006,1000007,1000008,1000009,1000010,1000011,1000013,1000014,1000015,1000016,1000017,1000018,1000019,1000020,1000022,1000023,1000024,1000026,1000027,1000028,1000029,1000030,1000031,1000032,1000034,1000041,1001003,1001004,1001013,1001018,1001019,1001020,1001024,1001025,1001026,1003001,1003002,1010005,1010009,1010011,1010012,1010013,1010014,1010016,1010017,1010018,1010019,1010020,1010022,1010023,1010024,1010025,1010026,1010027,1010029,1010031,1010032,1010034,1010035,1010037,1010041,1010044,1010045,1010047,1010048,1010050,1010051,1010053,1010059,1010066,1010068,1010071,1010073,1010074,1010076,1010077,1010087,1010088,1010089,1010092,1010094,1010095,1010097,1010098,1012001,1012002,1012003,1012004,1012005,1012006,1012007,1012008,1012009,1012010,1012011,1012012,1012013,1012014,1012015,1012016,1012017,1012018,1012019,1012020,1012021,1012022,1012023,1012024,1012025,1012026,1012027,1012028,1012029,1012030,1012031,1012032,1012033,1012034,1012036,1012037,1012038,1012040,1012041,1012042,1012043,1012044,1012045,1012046,1012047,1012048,1012050,1012051,1012052,1012053,1012054,1012055,1012056,1012057,1012058,1012061,1012062,1012063,1012064,1012065,1012066,1012067,1012068,1012069,1012070,1030014,1030015,1030016,1030017,1030018,1030019,1030030,1030031,1031001,1031002,1031003,1031005,1031006,1031008,1031009,1031011,1031013,1031014,1032001,1032002,1032003,1032004,1032005,1032007,1070002,1070003,1070007,1070008,1070009,1070010,1070011,1070012,1070013,1070014,1070015,1070016,1070017,1070018,1070019,1070022,1070023,1070024,1070025,1070026,1070027,1070028,1070029,1070032,1070033,1070034,1070035,1070036,1070037,1070038,1070041,1070043,1070044,1070045,1070047,1070048,1070049,1070050,1070051,1070052,1070054,1070055,1070056,1070057,1070058,1070062,1070063,1070064,1070065,1070066,1070067,1070069,1070073,1070074,1070075,1070080,1070081,1070082,1070083,1070084,1070085,1070086,1070087,1070091,1070092,1070093,1070098,1070099,1070103,1070105,1070106,1070107,1070108,1070109,1070110,1070111,1071001,1071002,1071003,1071006,1071007,1071008,1071009,1071010,1071011,1071012,1071013,1071014,1071015,1071016,1071017,1071018,1071019,1071020,1071021,1071022,1071023,1071024,1071025,1071026,1071027,1071028,1071029,1071030,1071031,1071032,1071033,1072001,1072002,1072003,1080005,1080006,1080007,1080008,1080009,1080010,1080011,1080012,1080013,1080014,1080015,1080016,1080018,1080019,1080020,1080021,1080022,1080023,1080024,1080025,1080026,1080027,1080028,1082001,1082004,1082005,1082006,1082007,1082008,1082009,1082010,1082014,1082020,1090002,1090003,1090004,1090005,1090006,1090007,1090008,1090009,1090010,1090011,1090012,1090013,1090014,1090015,1090016,1090017,1090019,1090020,1090022,1090023,1090024,1090030,1090031,1100002,1100003,1100004,1100005,1100006,1100007,1100008,1100009,1100010,1100011,1100012,1100013,1100014,1100015,1100016,1100017,1100019,1100020,1100022,1100023,1100024,1100030,1100031,1101001,1101002,1101003,1101009,1101010,1101012,1101013,1101014,1101017,1101019,1101025,1101032,1110002,1110003,1110004,1110005,1110006,1110007,1110008,1110009,1110010,1110011,1110012,1110013,1110014,1110015,1110016,1110017,1110019,1110020,1110022,1110023,1110024,1110030,1110031,1111001,1111002,1111003,1111005,1111006,1111007,1111011,1111012,1111013,1111014,1111015,1111016,1111019,1111021,1111022,1111024,1111026,1111039,1111041,1111043,1111045,1111048,1111057,1130003,1130005,1130015,1130016,1130018,1130020,1130021,1130022,1130025,1130026,1130027,1130028,1130029,1130031,1130035,1130038,1130041,1130042,1130045,1130046,1130048,1130049,1130051,1130052,1130056,1130058,1130059,1130064,1130066,1130067,1130068,1130070,1130071,1130072};
+                                                if (excludedItemIds.Contains(id))
+                                                {
+                                                    continue;
+                                                }
+                                                unownedIds.Add(id);
+                                                // END EDITED
+                                            }
+                                        }
                                     }
-                                    duelScoreTotal += duelScoreRewardValue;
-                                    duelRewards.Add(new Dictionary<string, object>()
+                                    if (unownedIds.Count > 0)
                                     {
-                                        { "type", reward.Rare ? goldBox : blueBox },
-                                        { "category", (int)ItemID.GetCategoryFromID(id) },
-                                        { "item_id", id },
-                                        { "num", amount },
-                                        { "is_prize", true },
-                                    });
+                                        int amount = 1;
+                                        int id = unownedIds.ElementAt(rand.Next(unownedIds.Count));
+                                        if (ItemID.GetCategoryFromID(id) == ItemID.Category.STRUCTURE)
+                                        {
+                                            GiveStructureDeck(request, id);
+                                        }
+                                        else if (ItemID.GetCategoryFromID(id) == ItemID.Category.CONSUME)
+                                        {
+                                            amount = rewards.GetAmount(rand, reward, chapterStatusChanged);
+                                            if (amount == 0)
+                                            {
+                                                continue;
+                                            }
+                                            request.Player.AddItem(id, amount);
+                                        }
+                                        else
+                                        {
+                                            request.Player.Items.Add(id);
+                                            WriteItem(request, id);
+                                        }
+                                        duelScoreTotal += duelScoreRewardValue;
+                                        duelRewards.Add(new Dictionary<string, object>()
+                                        {
+                                            { "type", reward.Rare ? goldBox : blueBox },
+                                            { "category", (int)ItemID.GetCategoryFromID(id) },
+                                            { "item_id", id },
+                                            { "num", amount },
+                                            { "is_prize", true },
+                                        });
+                                    }
+                                // END EDITED (indent)
+                                // EDITED
                                 }
+                                // END EDITED
                             }
                         }
                         break;
@@ -792,8 +1075,14 @@ namespace YgoMaster
                         break;
                 }
             }
-
             duelScore["total"] = duelScoreTotal;
+            // EDITED
+            // Force inventory reload so that gems and items amounts are updated immediately. 
+            request.Response["Item"] = new Dictionary<string, object>()
+            {
+                { "have", GetItemHaveDictionary(request.Player) },
+            };
+            // END EDITED
         }
 
         void UpdateUnlockedSecretsForCompletedDuels(Player player, DuelResultType result, DuelFinishType finishType)

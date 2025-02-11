@@ -12,6 +12,123 @@ namespace YgoMaster
 {
     partial class GameServer
     {
+        // EDITED
+        void UnlockSecrets(Player player)
+        {
+            // Solo secrets
+            Dictionary<string, object> allChapterData = Utils.GetDictionary(SoloData, "chapter");
+            foreach (KeyValuePair<int, ChapterStatus> chapter in player.SoloChapters)
+            {
+                if (chapter.Value == ChapterStatus.RENTAL_CLEAR || chapter.Value == ChapterStatus.MYDECK_CLEAR || chapter.Value == ChapterStatus.COMPLETE)
+                {
+                    int gateId = GetChapterGateId(chapter.Key);
+                    Dictionary<string, object> chapterGateData = Utils.GetDictionary(allChapterData, gateId.ToString());
+                    Dictionary<string, object> chapterData = Utils.GetDictionary(chapterGateData, chapter.Key.ToString());
+                    object unlockSecretObj;
+                    if (chapterData.TryGetValue("unlock_secret", out unlockSecretObj))
+                    {
+                        List<int> unlockSecretIds = new List<int>();
+                        if (unlockSecretObj is List<object>)
+                        {
+                            foreach (object idObj in unlockSecretObj as List<object>)
+                            {
+                                unlockSecretIds.Add((int)Convert.ChangeType(idObj, typeof(int)));
+                            }
+                        }
+                        else
+                        {
+                            unlockSecretIds.Add((int)Convert.ChangeType(unlockSecretObj, typeof(int)));
+                        }
+                        foreach (int unlockSecretId in unlockSecretIds)
+                        {
+                            ShopItemInfo secretPack;
+                            if (unlockSecretId > 0 && Shop.PacksByPackId.TryGetValue(unlockSecretId, out secretPack))
+                            {
+                                switch (secretPack.SecretType)
+                                {
+                                    case ShopItemSecretType.Find:
+                                    case ShopItemSecretType.FindOrCraft:
+                                    case ShopItemSecretType.Other:
+                                        bool isHidden = player.ShopState.GetAvailability(Shop, secretPack) == PlayerShopItemAvailability.Hidden;
+                                        if (isHidden)
+                                        {
+                                            player.ShopState.New(secretPack);
+                                        }
+                                        player.ShopState.Unlock(secretPack);
+                                        break;
+                                }
+                            }
+                            ShopItemInfo secretDeck;
+                            if (unlockSecretId > 0 && IsMasterPackUnlocked(player.ShopState) && Shop.DecksByShopItemId.TryGetValue(unlockSecretId, out secretDeck))
+                            {
+                                switch (secretDeck.SecretType)
+                                {
+                                    case ShopItemSecretType.Find:
+                                    case ShopItemSecretType.FindOrCraft:
+                                    case ShopItemSecretType.Other:
+                                        bool isHidden = player.ShopState.GetAvailability(Shop, secretDeck) == PlayerShopItemAvailability.Hidden;
+                                        if (isHidden)
+                                        {
+                                            player.ShopState.New(secretDeck);
+                                        }
+                                        player.ShopState.Unlock(secretDeck);
+                                        break;
+                                }
+                            }
+                            ShopItemInfo bundle;
+                            if (unlockSecretId > 0 && IsMasterPackUnlocked(player.ShopState) && Shop.BundlesByShopItemId.TryGetValue(unlockSecretId, out bundle))
+                            {
+                                bool isHidden = player.ShopState.GetAvailability(Shop, bundle) == PlayerShopItemAvailability.Hidden;
+                                if (isHidden)
+                                {
+                                    player.ShopState.New(bundle);
+                                }
+                                player.ShopState.Unlock(bundle);
+                            }
+                        }
+                    }
+                }
+            }
+            // Shop secrets
+            foreach (ShopItemInfo shopItem in Shop.AllShops.Values.OrderBy(x => x.ShopId))
+            {
+                shopItem.DoUnlockSecrets(player, Shop);
+            }
+        }
+
+        Dictionary<int, int> altArtIdByCardId = new Dictionary<int, int>
+        {
+            {5000, 3401}, // The Winged Dragon of Ra
+            {14496, 3411}, // Apollousa, Bow of the Goddess
+            {14676, 3415}, // I:P Masquerena
+            {13601, 3421}, // Knightmare Unicorn
+            {15123, 3423}, // Eldlich the Golden Lord
+            {13671, 3434}, // Sky Striker Mobilize - Engage!
+            {4007, 3801}, // Blue-Eyes White Dragon
+            {4041, 3863}, // Dark Magician
+            {4998, 3868}, // Obelisk the Tormentor
+            {4999, 3869}, // Slifer the Sky Dragon
+            {7734, 3882}, // Stardust Dragon
+            {12950, 3891}, // Ash Blossom & Joyous Spring
+            {11258, 3894}, // El Shaddoll Construct
+            {11257, 3895}, // El Shaddoll Winda
+            {13668, 3899}, // Sky Striker Ace - Kagari
+            {7696, 19077}, // Junk Warrior
+            {9122, 19943}, // Tuning
+            {15626, 3437}, // Evil★Twin Ki-sikil
+            {15627, 3438}, // Evil★Twin Lil-la
+            {13670, 21227}, // Sky Striker Ace - Raye
+            {13763, 21228}, // Sky Striker Ace - Hayate
+            {5328, 20040}, // Reinforcement of the Army
+            {13587, 3892}, // Ghost Belle & Haunted Mansion
+            {6653, 3881}, // Elemental HERO Neos
+            {13669, 3433}, // Sky Striker Ace - Shizuku
+        };
+
+        bool UpgradeLoanerDeckToOwnedAltArts;
+        bool RandomiseLEChapterBattlefield;
+        bool UsePlayerBattlefieldForLEChapter;
+        // END EDITED
         static readonly Version highestSupportedClientVersion = new Version(int.MaxValue, int.MaxValue);
 
         static readonly string deckSearchUrl = "https://ayk-deck.mo.konami.net/ayk/yocgapi/search";
@@ -340,6 +457,11 @@ namespace YgoMaster
                 throw new Exception("Failed to parse settings json");
             }
 
+            // EDITED
+            UpgradeLoanerDeckToOwnedAltArts = Utils.GetValue<bool>(values, "UpgradeLoanerDeckToOwnedAltArts");
+            RandomiseLEChapterBattlefield = Utils.GetValue<bool>(values, "RandomiseLEChapterBattlefield");
+            UsePlayerBattlefieldForLEChapter = Utils.GetValue<bool>(values, "UsePlayerBattlefieldForLEChapter");
+            // END EDITED
             string baseIP = Utils.GetValue<string>(values, "BaseIP");
             int basePort = Utils.GetValue<int>(values, "BasePort");
             sessionServerPort = Utils.GetValue<int>(values, "SessionServerPort");
@@ -484,6 +606,15 @@ namespace YgoMaster
                     }
                 }
             }
+            // EDITED
+            foreach(KeyValuePair<int, int> kvp in altArtIdByCardId)
+            {
+                if (CardRare.ContainsKey(kvp.Value) && CardRare.ContainsKey(kvp.Key))
+                {
+                    CardRare[kvp.Value] = CardRare[kvp.Key];
+                }
+            }
+            // END EDITED
 
             CardCraftable = new List<int>();
             string cardCraftableListFile = Path.Combine(dataDirectory, "CardCraftableList.json");
@@ -1559,6 +1690,10 @@ namespace YgoMaster
                     }
                 }
             }
+            // EDITED
+            // Ensures chapter secrets are retroactively unlocked if added after chapter was cleared.
+            UnlockSecrets(player);
+            // END EDITED
         }
 
         void SaveDeck(DeckInfo deck)
@@ -1737,6 +1872,14 @@ namespace YgoMaster
                             case ShopCategory.Pack:
                                 Shop.PacksByPackId[shopItem.Value.Id] = shopItem.Value;
                                 break;
+                            // EDITED
+                            case ShopCategory.Structure:
+                                Shop.DecksByShopItemId[shopItem.Value.Id] = shopItem.Value;
+                                break;
+                            case ShopCategory.Special:
+                                Shop.BundlesByShopItemId[shopItem.Value.Id] = shopItem.Value;
+                                break;
+                            // END EDITED
                         }
                         switch (shopItem.Value.PackType)
                         {
@@ -2431,6 +2574,40 @@ namespace YgoMaster
                         }
                     }
                 }
+                // EDITED
+                Dictionary<string, object> minPackRatesRaw = Utils.GetDictionary(data, "minPackRate");
+                if (minPackRatesRaw != null)
+                {
+                    Dictionary<string, object> minPackRarityRatesRaw = Utils.GetDictionary(minPackRatesRaw, "rarity");
+                    if (minPackRarityRatesRaw != null)
+                    {
+                        Dictionary<CardRarity, double> minPackRarityRates = new Dictionary<CardRarity, double>();
+                        foreach (KeyValuePair<string, object> rateByRarity in minPackRarityRatesRaw)
+                        {
+                            CardRarity rarity = (CardRarity)(int)Convert.ChangeType(rateByRarity.Key, typeof(int));
+                            double rate = (double)Convert.ChangeType(rateByRarity.Value, typeof(double));
+                            minPackRarityRates[rarity] = rate;
+                        }
+                        shopOdds.MinPackRarityRates = minPackRarityRates;
+                    }
+                    Dictionary<string, object> minPackStyleRatesRaw = Utils.GetDictionary(minPackRatesRaw, "style");
+                    if (minPackStyleRatesRaw != null)
+                    {
+                        Dictionary<CardStyleRarity, double> minPackStyleRates = new Dictionary<CardStyleRarity, double>();
+                        foreach (KeyValuePair<string, object> styleByRarity in minPackStyleRatesRaw)
+                        {
+                            CardStyleRarity style = (CardStyleRarity)(int)Convert.ChangeType(styleByRarity.Key, typeof(int));
+                            double rate = (double)Convert.ChangeType(styleByRarity.Value, typeof(double));
+                            minPackStyleRates[style] = rate;
+                        }
+                        shopOdds.MinPackStyleRates = minPackStyleRates;
+                    }
+                    double minPackUpgradeOtherTypeRate = Utils.GetValue<double>(minPackRatesRaw, "upgradeOtherType", 0);
+                    shopOdds.MinPackUpgradeOtherTypeRate = minPackUpgradeOtherTypeRate;
+                }
+                double altArtRate = Utils.GetValue<double>(data, "altArtRate", 0);
+                shopOdds.AltArtRate = altArtRate;
+                // END EDITED
                 foreach (ShopPackType packType in shopOdds.PackTypes)
                 {
                     if (Shop.PackOddsByPackType.ContainsKey(packType))
