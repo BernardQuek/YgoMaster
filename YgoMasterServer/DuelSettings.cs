@@ -201,6 +201,43 @@ namespace YgoMaster
             }
         }
 
+        // EDITED
+        public void SetP2ItemValue(ItemID.Category itemCategory, int value)
+        {
+            switch (itemCategory)
+            {
+                case ItemID.Category.AVATAR: avatar[CpuIndex] = value; break;
+                case ItemID.Category.ICON: icon[CpuIndex] = value; break;
+                case ItemID.Category.ICON_FRAME: icon_frame[CpuIndex] = value; break;
+                case ItemID.Category.PROTECTOR: sleeve[CpuIndex] = value; break;
+                case ItemID.Category.FIELD: mat[CpuIndex] = value; break;
+                case ItemID.Category.FIELD_OBJ: duel_object[CpuIndex] = value; break;
+                case ItemID.Category.AVATAR_HOME: avatar_home[CpuIndex] = value; break;
+                case ItemID.Category.WALLPAPER: wallpaper[CpuIndex] = value; break;
+            }
+        }
+
+        public int GetP1ItemValue(ItemID.Category itemCategory)
+        {
+            switch (itemCategory)
+            {
+                case ItemID.Category.AVATAR: return avatar[PlayerIndex];
+                case ItemID.Category.ICON: return icon[PlayerIndex];
+                case ItemID.Category.ICON_FRAME: return icon_frame[PlayerIndex];
+                case ItemID.Category.PROTECTOR: return sleeve[PlayerIndex];
+                case ItemID.Category.FIELD: return mat[PlayerIndex];
+                case ItemID.Category.FIELD_OBJ: return duel_object[PlayerIndex];
+                case ItemID.Category.AVATAR_HOME: return avatar_home[PlayerIndex];
+                case ItemID.Category.WALLPAPER: return wallpaper[PlayerIndex];
+            }
+            return 0;
+        }
+
+        public void SetDeck(DeckInfo[] deckInfo)
+        {
+            Deck = deckInfo;
+        }
+        // END EDITED
         public int GetBgmValue()
         {
             if (bgms != null && bgms.Count > 0)
