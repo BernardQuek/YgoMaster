@@ -17,6 +17,10 @@ namespace YgoMaster
         public Dictionary<int, ShopItemInfo> SpecialShop { get; private set; }
         public Dictionary<int, ShopItemInfo> AllShops { get; private set; }
         public Dictionary<int, ShopItemInfo> PacksByPackId { get; private set; }
+        // EDITED
+        public Dictionary<int, ShopItemInfo> DecksByShopItemId { get; private set; }
+        public Dictionary<int, ShopItemInfo> BundlesByShopItemId { get; private set; }
+        // END EDITED
         public Dictionary<int, List<ShopItemInfo>> SecretPacksByCardId { get; private set; }
         
         public ShopItemInfo StandardPack;
@@ -93,6 +97,10 @@ namespace YgoMaster
             SpecialShop = new Dictionary<int, ShopItemInfo>();
             AllShops = new Dictionary<int, ShopItemInfo>();
             PacksByPackId = new Dictionary<int, ShopItemInfo>();
+            // EDITED
+            DecksByShopItemId = new Dictionary<int, ShopItemInfo>();
+            BundlesByShopItemId = new Dictionary<int, ShopItemInfo>();
+            // END EDITED
             SecretPacksByCardId = new Dictionary<int, List<ShopItemInfo>>();
         }
 
@@ -276,6 +284,17 @@ namespace YgoMaster
             return ((double)numObtained / (double)Cards.Count) * 100.0;
         }
 
+        // EDITED
+        public double GetPercentPlaysetComplete(Player player, out int numObtained)
+        {
+            numObtained = 0;
+            foreach (int cardId in Cards.Keys)
+            {
+                numObtained += Math.Min(player.Cards.GetCount(cardId), 3);
+            }
+            return numObtained / (Cards.Count * 3.0) * 100.0;
+        }
+        // END EDITED
         public List<ShopItemInfo> DoUnlockSecrets(Player player, ShopInfo shop)
         {
             List<ShopItemInfo> result = null;
@@ -462,12 +481,22 @@ namespace YgoMaster
         /// premiereRateList
         /// </summary>
         public List<ShopOddsStyleRarity> CardStyleRarityRateList { get; private set; }
+        // EDITED
+        public Dictionary<CardRarity, double> MinPackRarityRates { get; set; }
+        public Dictionary<CardStyleRarity, double> MinPackStyleRates { get; set; }
+        public double MinPackUpgradeOtherTypeRate { get; set; }
+        public double AltArtRate { get; set; }
+        // END EDITED
 
         public ShopOddsInfo()
         {
             PackTypes = new HashSet<ShopPackType>();
             CardRateList = new List<ShopOddsRarity>();
             CardStyleRarityRateList = new List<ShopOddsStyleRarity>();
+            // EDITED
+            MinPackRarityRates = new Dictionary<CardRarity, double>();
+            MinPackStyleRates = new Dictionary<CardStyleRarity, double>();
+            // END EDITED
         }
 
         public ShopOddsStyleRarity GetCardStyleRarity(CardRarity rarity)
